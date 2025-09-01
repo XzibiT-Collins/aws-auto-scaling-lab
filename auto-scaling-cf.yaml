@@ -248,7 +248,7 @@ Resources:
             <!doctype html>
             <html><head><meta charset="utf-8"><title>Auto Scaling Lab</title></head>
             <body style="font-family: system-ui, sans-serif">
-              <h1>Hello from ${IP} / ${IID}</h1>
+              <h1>Hello from ${!IP} / ${!IID}</h1>
               <p>Click the button to stress CPU on <strong>this</strong> instance for 60 seconds.</p>
               <button onclick="stress()">Stress CPU (60s)</button>
               <script>
@@ -260,6 +260,7 @@ Resources:
               </script>
             </body></html>
             HTML
+
 
             # CGI script to stress CPU using 'yes' (no external packages)
             cat >/var/www/cgi-bin/stress.sh <<'SH'
