@@ -235,7 +235,8 @@ Resources:
       MinSize: "1"
       MaxSize: "4"
       DesiredCapacity: "1"
-      TargetGroupArns: [!Ref TargetGroup]
+      TargetGroupARNs: 
+        - !Ref TargetGroup
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
