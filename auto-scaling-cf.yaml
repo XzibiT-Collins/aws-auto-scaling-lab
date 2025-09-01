@@ -288,7 +288,7 @@ Resources:
                     <h1>🚀 Load Balancer Test Page</h1>
   
                     <div class="info-box">
-                        <h2>Load Balancer Information</h2>
+                        <h2>Load Balancer Information - ASG</h2>
                         <p>This page is served by one of the instances behind your load balancer.</p>
                         <p>Refresh the page to see if you get a different instance!</p>
                     </div>
