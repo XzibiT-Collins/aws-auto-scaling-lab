@@ -219,135 +219,170 @@ Resources:
         MetadataOptions:
           HttpTokens: required
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
-            # Update the system
+          Fn::Base64: |
+            #!/bin/bash -ex
+  
+            # Update system and install Apache
             yum update -y
-            
-            # Install Apache and stress
             yum install -y httpd stress
-            
-            # Start and enable Apache
-            systemctl start httpd
-            systemctl enable httpd
-            
-            # Create a simple web page with instance info and stress test button
+  
+            # Get instance metadata
             INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+            AVAILABILITY_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
             PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-            
+            PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || echo "No public IP")
+  
+            # Create custom HTML page
             cat > /var/www/html/index.html << EOF
             <!DOCTYPE html>
-            <html>
+            <html lang="en">
             <head>
-                <title>Auto Scaling Lab</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Load Balancer Test</title>
                 <style>
-                    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        max-width: 800px; 
+                        margin: 50px auto; 
+                        padding: 20px; 
+                        background-color: #f5f5f5;
+                    }
+                    .container { 
+                        background: white; 
+                        padding: 30px; 
+                        border-radius: 10px; 
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
                     h1 { color: #333; }
-                    .info { background-color: #f5f5f5; padding: 20px; border-radius: 5px; display: inline-block; }
-                    .stress-btn { 
-                        background-color: #ff4757; 
+                    .info-box { 
+                        background: #e8f4f8; 
+                        padding: 15px; 
+                        border-left: 4px solid #0073bb; 
+                        margin: 20px 0; 
+                        border-radius: 4px;
+                    }
+                    .server-info { 
+                        background: #f0f8f0; 
+                        padding: 15px; 
+                        border-left: 4px solid #2ca02c; 
+                        margin: 20px 0; 
+                        border-radius: 4px;
+                    }
+                    button { 
+                        background: #ff6b6b; 
                         color: white; 
                         border: none; 
-                        padding: 15px 32px; 
-                        text-align: center; 
-                        text-decoration: none; 
-                        display: inline-block; 
-                        font-size: 16px; 
-                        margin: 20px 2px; 
+                        padding: 12px 24px; 
+                        border-radius: 5px; 
                         cursor: pointer; 
-                        border-radius: 5px;
+                        font-size: 16px; 
+                        margin: 10px 0;
                     }
-                    .stress-btn:hover { background-color: #ff6b81; }
+                    button:hover { background: #ff5252; }
+                    .timestamp { color: #666; font-size: 0.9em; }
                 </style>
             </head>
             <body>
-                <h1>Auto Scaling Lab</h1>
-                <div class="info">
-                    <h2>Hello from $PRIVATE_IP / $INSTANCE_ID</h2>
-                    <p>This instance is part of an Auto Scaling Group</p>
-                    <button class="stress-btn" onclick="startStressTest()">Stress Test CPU</button>
-                    <p id="status"></p>
-                </div>
-                
-                <script>
-                    function startStressTest() {
-                        document.getElementById('status').innerText = 'Starting CPU stress test for 60 seconds...';
-                        
-                        // Use fetch API to trigger stress test
-                        fetch('/stress', { method: 'POST' })
+                <div class="container">
+                    <h1>🚀 Load Balancer Test Page</h1>
+  
+                    <div class="info-box">
+                        <h2>Load Balancer Information</h2>
+                        <p>This page is served by one of the instances behind your load balancer.</p>
+                        <p>Refresh the page to see if you get a different instance!</p>
+                    </div>
+  
+                    <div class="server-info">
+                        <h2>Current Server Details</h2>
+                        <p><strong>Instance ID:</strong> $INSTANCE_ID</p>
+                        <p><strong>Availability Zone:</strong> $AVAILABILITY_ZONE</p>
+                        <p><strong>Private IP:</strong> $PRIVATE_IP</p>
+                        <p><strong>Public IP:</strong> $PUBLIC_IP</p>
+                        <p class="timestamp"><strong>Page generated at:</strong> <span id="timestamp"></span></p>
+                    </div>
+  
+                    <div>
+                        <h2>Stress Test</h2>
+                        <p>Click the button below to simulate CPU load on this instance:</p>
+                        <button onclick="startStressTest()">Start Stress Test (30 seconds)</button>
+                        <div id="stressStatus"></div>
+                    </div>
+  
+                    <script>
+                        document.getElementById('timestamp').textContent = new Date().toLocaleString();
+  
+                        function startStressTest() {
+                            const button = document.querySelector('button');
+                            const statusDiv = document.getElementById('stressStatus');
+  
+                            button.disabled = true;
+                            button.textContent = 'Stress test running...';
+                            statusDiv.innerHTML = '<p>🔄 Stress test started - simulating CPU load for 30 seconds...</p>';
+  
+                            // Use Fetch API to trigger the stress test
+                            fetch('/cgi-bin/stress-test', {
+                                method: 'POST'
+                            })
                             .then(response => response.text())
                             .then(data => {
-                                document.getElementById('status').innerText = 'Stress test completed!';
+                                statusDiv.innerHTML = '<p>✅ Stress test completed successfully!</p>';
+                                button.textContent = 'Start Stress Test (30 seconds)';
+                                button.disabled = false;
                             })
                             .catch(error => {
-                                document.getElementById('status').innerText = 'Error starting stress test: ' + error;
+                                statusDiv.innerHTML = '<p>❌ Error starting stress test: ' + error + '</p>';
+                                button.textContent = 'Start Stress Test (30 seconds)';
+                                button.disabled = false;
                             });
-                    }
-                </script>
+                        }
+                    </script>
+                </div>
             </body>
             </html>
             EOF
-            
-            # Create a simple stress test script that definitely works
-            cat > /var/www/html/stress.php << 'EOF'
-            <?php
-            header('Content-Type: text/plain');
-            echo "Starting CPU stress test...\n";
-            flush();
-            
-            // Fork a background process to do CPU intensive work
-            $pid = pcntl_fork();
-            if ($pid == 0) {
-                // Child process - do CPU intensive work
-                $end_time = time() + 60; // Run for 60 seconds
-                while (time() < $end_time) {
-                    // CPU intensive operations
-                    for ($i = 0; $i < 1000000; $i++) {
-                        sqrt($i);
-                    }
-                }
-                exit(0);
-            }
-            echo "CPU stress test started (PID: $pid)\n";
-            ?>
-            EOF
-            
-            # Install PHP
-            yum install -y php
-            
-            # Create a CGI script to handle stress test
+  
+            # Create stress test CGI script
             mkdir -p /var/www/cgi-bin
-            cat > /var/www/cgi-bin/stress.sh << 'EOF'
+            cat > /var/www/cgi-bin/stress-test << 'EOF'
             #!/bin/bash
             echo "Content-type: text/plain"
             echo ""
-            echo "Starting CPU stress test for 60 seconds..."
-            
-            # Create CPU load using dd and /dev/zero
-            timeout 60 bash -c '
-                for i in {1..4}; do
-                    dd if=/dev/zero of=/dev/null bs=1M &
-                done
-                wait
-            ' &
-            
-            echo "CPU stress test initiated"
+            echo "Starting stress test for 30 seconds..."
+            # Run stress test in background and immediately return response
+            nohup timeout 30s stress --cpu 2 --vm 1 --vm-bytes 512M > /var/log/stress-test.log 2>&1 &
+            echo "Stress test initiated"
             EOF
-            
-            chmod +x /var/www/cgi-bin/stress.sh
-            
-            # Configure Apache to handle the stress test endpoint
-            cat > /etc/httpd/conf.d/stress.conf << EOF
-            ScriptAlias /stress /var/www/cgi-bin/stress.sh
-            <Directory "/var/www/cgi-bin">
-                AllowOverride None
-                Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
-                Require all granted
-            </Directory>
-            EOF
-            
+  
+            # Make CGI script executable
+            chmod +x /var/www/cgi-bin/stress-test
+  
+            # Set proper permissions
+            chown -R apache:apache /var/www/html
+            chown -R apache:apache /var/www/cgi-bin
+  
+            # Enable and start Apache
+            systemctl enable httpd
+            systemctl start httpd
+  
+            # Configure Apache to allow CGI execution
+            echo "ScriptAlias /cgi-bin/ /var/www/cgi-bin/" >> /etc/httpd/conf/httpd.conf
+            echo "<Directory \"/var/www/cgi-bin\">" >> /etc/httpd/conf/httpd.conf
+            echo "    Options +ExecCGI" >> /etc/httpd/conf/httpd.conf
+            echo "    AddHandler cgi-script .cgi .sh" >> /etc/httpd/conf/httpd.conf
+            echo "    Require all granted" >> /etc/httpd/conf/httpd.conf
+            echo "</Directory>" >> /etc/httpd/conf/httpd.conf
+  
             # Restart Apache to apply changes
             systemctl restart httpd
+  
+            # Create a simple health check endpoint
+            echo "OK" > /var/www/html/health.html
+  
+            # Log completion
+            echo "UserData script completed successfully at $(date)" >> /var/log/user-data.log
+        
+
   # Auto Scaling Group
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
