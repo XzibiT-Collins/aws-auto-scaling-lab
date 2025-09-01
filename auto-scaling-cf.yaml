@@ -23,10 +23,8 @@ Parameters:
     Type: String
     Default: ami-015cbce10f839bd0c
 
-
-
 Resources:
-  # 1. Create VPC
+  # VPC
   AsgVPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -38,14 +36,13 @@ Resources:
   InternetGateway:
     Type: AWS::EC2::InternetGateway
 
-  # Attach IGW to VPC
   VPCGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
     Properties:
       VpcId: !Ref AsgVPC
       InternetGatewayId: !Ref InternetGateway
 
-  # Public Subnets 1 and 2
+  # Public Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -62,21 +59,22 @@ Resources:
       MapPublicIpOnLaunch: true
       AvailabilityZone: eu-central-1b
 
-
+  # Private Subnets
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref MyVPC
+      VpcId: !Ref AsgVPC
       CidrBlock: !Ref PrivateSubnet1Cidr
       AvailabilityZone: eu-central-1a
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref MyVPC
+      VpcId: !Ref AsgVPC
       CidrBlock: !Ref PrivateSubnet2Cidr
       AvailabilityZone: eu-central-1b
 
+  # Route Tables
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -137,12 +135,12 @@ Resources:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
 
-
+  # Security Groups
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Allow HTTP & SSM access
-      VpcId: !Ref MyVPC
+      VpcId: !Ref AsgVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
@@ -155,20 +153,6 @@ Resources:
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
-
-  TargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub tg-${AWS::StackName}
-      VpcId: !Ref AsgVPC
-      Protocol: HTTP
-      Port: 80
-      TargetType: instance
-      HealthCheckProtocol: HTTP
-      HealthCheckPort: traffic-port
-      HealthCheckPath: /
-      Matcher:
-        HttpCode: '200'
 
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -197,6 +181,21 @@ Resources:
       Subnets: [!Ref PublicSubnet1, !Ref PublicSubnet2]
       SecurityGroups: [!Ref LoadBalancerSecurityGroup]
 
+  # Target Group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub tg-${AWS::StackName}
+      VpcId: !Ref AsgVPC
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: '200'
+
   # Listener
   Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -208,17 +207,25 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
 
-    # Launch Template
-    LaunchTemplate:
-      Type: AWS::EC2::LaunchTemplate
-      Properties:
+  # ✅ Launch Template (moved out of Listener and fixed)
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub launch-template-${AWS::StackName}
+      LaunchTemplateData:
         ImageId: !Ref AmiImage
         InstanceType: !Ref InstanceType
         SecurityGroupIds: [!Ref InstanceSecurityGroup]
-        MetaDataOptions:
+        MetadataOptions:
           HttpTokens: required
         UserData:
           Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl enable httpd
+            systemctl start httpd
+            echo "Hello from Auto Scaling Group!" > /var/www/html/index.html
 
   # Auto Scaling Group
   AutoScalingGroup:
@@ -237,7 +244,7 @@ Resources:
       MetricsCollection:
         - Granularity: "1Minute"
 
-  # Predefined Threshold for scaling
+  # Scaling Policy
   CPUScalingTargetTracking:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
@@ -246,9 +253,9 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 50.0
+      PolicyType: TargetTrackingScaling
 
-  #Outputs
-  Outputs:
-    ALBEndpoint:
-      Description: Public url for application load balancer
-      Value: !Sub "http://${LoadBalancer.DNSName}"
+Outputs:
+  ALBEndpoint:
+    Description: Public URL for the Application Load Balancer
+    Value: !Sub "http://${LoadBalancer.DNSName}"
