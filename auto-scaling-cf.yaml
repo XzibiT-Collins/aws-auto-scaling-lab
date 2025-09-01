@@ -219,67 +219,66 @@ Resources:
         MetadataOptions:
           HttpTokens: required
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
-            set -xe
-            PKG=dnf; command -v dnf >/dev/null 2>&1 || PKG=yum
-            $PKG -y update
-            $PKG -y install httpd
+  Fn::Base64:
+    !Sub |
+      #!/bin/bash
+      set -xe
+      PKG=dnf; command -v dnf >/dev/null 2>&1 || PKG=yum
+      $PKG -y update
+      $PKG -y install httpd
 
-            # Enable CGI for /cgi-bin and allow .sh as CGI
-            mkdir -p /var/www/cgi-bin
-            cat >/etc/httpd/conf.d/cgi.conf <<'EOF'
-            ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
-            <Directory "/var/www/cgi-bin">
-              AllowOverride None
-              Options +ExecCGI
-              Require all granted
-              AddHandler cgi-script .cgi .sh
-            </Directory>
-            EOF
+      # Enable CGI for /cgi-bin and allow .sh as CGI
+      mkdir -p /var/www/cgi-bin
+      cat >/etc/httpd/conf.d/cgi.conf <<'EOF'
+      ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
+      <Directory "/var/www/cgi-bin">
+        AllowOverride None
+        Options +ExecCGI
+        Require all granted
+        AddHandler cgi-script .cgi .sh
+      </Directory>
+      EOF
 
-            # Instance metadata (IMDSv2)
-            TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-            IID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-            IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+      # Instance metadata (IMDSv2)
+      TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+      IID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+      IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
 
-            # Web page
-            cat >/var/www/html/index.html <<HTML
-            <!doctype html>
-            <html><head><meta charset="utf-8"><title>Auto Scaling Lab</title></head>
-            <body style="font-family: system-ui, sans-serif">
-              <h1>Hello from ${!IP} / ${!IID}</h1>
-              <p>Click the button to stress CPU on <strong>this</strong> instance for 60 seconds.</p>
-              <button onclick="stress()">Stress CPU (60s)</button>
-              <script>
-              async function stress(){
-                const r = await fetch('/cgi-bin/stress.sh');
-                const t = await r.text();
-                alert(t);
-              }
-              </script>
-            </body></html>
-            HTML
+      # Web page
+      cat >/var/www/html/index.html <<HTML
+      <!doctype html>
+      <html><head><meta charset="utf-8"><title>Auto Scaling Lab</title></head>
+      <body style="font-family: system-ui, sans-serif">
+        <h1>Hello from ${IP} / ${IID}</h1>
+        <p>Click the button to stress CPU on <strong>this</strong> instance for 60 seconds.</p>
+        <button onclick="stress()">Stress CPU (60s)</button>
+        <script>
+        async function stress(){
+          const r = await fetch('/cgi-bin/stress.sh');
+          const t = await r.text();
+          alert(t);
+        }
+        </script>
+      </body></html>
+      HTML
 
+      # CGI script to stress CPU using 'yes' (no external packages)
+      cat >/var/www/cgi-bin/stress.sh <<'SH'
+      #!/bin/bash
+      echo "Content-Type: text/plain"
+      echo ""
+      TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+      IID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+      IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+      # Start two busy workers in background for 60 seconds
+      (yes > /dev/null &) ; (yes > /dev/null &)
+      (sleep 60; pkill -f "^yes\$") >/dev/null 2>&1 &
+      echo "CPU stress running for 60s on ${IID} (${IP})"
+      SH
+      chmod +x /var/www/cgi-bin/stress.sh
 
-            # CGI script to stress CPU using 'yes' (no external packages)
-            cat >/var/www/cgi-bin/stress.sh <<'SH'
-            #!/bin/bash
-            echo "Content-Type: text/plain"
-            echo ""
-            TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-            IID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-            IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
-            # Start two busy workers in background for 60 seconds
-            (yes > /dev/null &) ; (yes > /dev/null &)
-            (sleep 60; pkill -f "^yes$") >/dev/null 2>&1 &
-            echo "CPU stress running for 60s on ${IID} (${IP})"
-            SH
-            chmod +x /var/www/cgi-bin/stress.sh
-
-            systemctl enable httpd
-            systemctl restart httpd
-
+      systemctl enable httpd
+      systemctl restart httpd
 
   # Auto Scaling Group
   AutoScalingGroup:
