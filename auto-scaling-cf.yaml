@@ -259,7 +259,7 @@ Resources:
             INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
 
             # Create the enhanced web page
-            cat > /var/www/html/index.html << 'EOF'
+            cat > /var/www/html/index.html << EOF
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -541,25 +541,25 @@ Resources:
                                     <div class="info-label">
                                         <i class="fas fa-fingerprint"></i> Instance ID
                                     </div>
-                                    <div class="info-value">$$INSTANCE_ID</div>
+                                    <div class="info-value">$INSTANCE_ID</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="info-label">
                                         <i class="fas fa-network-wired"></i> Private IP
                                     </div>
-                                    <div class="info-value ip-address">$$PRIVATE_IP</div>
+                                    <div class="info-value ip-address">$PRIVATE_IP</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="info-label">
                                         <i class="fas fa-globe-americas"></i> Availability Zone
                                     </div>
-                                    <div class="info-value">$$AVAILABILITY_ZONE</div>
+                                    <div class="info-value">$AVAILABILITY_ZONE</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="info-label">
                                         <i class="fas fa-tachometer-alt"></i> Instance Type
                                     </div>
-                                    <div class="info-value">$$INSTANCE_TYPE</div>
+                                    <div class="info-value">$INSTANCE_TYPE</div>
                                 </div>
                             </div>
                             <div class="refresh-hint">
