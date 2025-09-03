@@ -2,24 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Auto Scaling Lab with Apache Web Server (t3.micro) - Modified logical names for clarity
 
 Parameters:
-  PublicSubnet1Cidr:
-    Type: String
-    Default: 10.0.1.0/24
-  PublicSubnet2Cidr:
-    Type: String
-    Default: 10.0.3.0/24
-  PrivateSubnet1Cidr:
-    Type: String
-    Default: 10.0.2.0/24
-  PrivateSubnet2Cidr:
-    Type: String
-    Default: 10.0.4.0/24
-  InstanceType:
-    Type: String
-    Default: t3.micro
-  AmiImage:
-    Type: String
-    Default: ami-015cbce10f839bd0c
   SSHLocation:
     Description: The IP address range that can be used to SSH to the EC2 instances
     Type: String
@@ -53,40 +35,49 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref AsgVPC
-      CidrBlock: !Ref PublicSubnet1Cidr
+      CidrBlock: 10.0.1.0/24
       AvailabilityZone: eu-central-1a
       MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: AutoScalingLabPublicSubnet1
 
   # Public Subnet 2
   PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref AsgVPC
-      CidrBlock: !Ref PublicSubnet2Cidr
-      AvailabilityZone: eu-central-1b
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: eu-central-1a
       MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: AutoScalingLabPublicSubnet2
 
   # Private Subnet 1
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref AsgVPC
-      CidrBlock: !Ref PrivateSubnet1Cidr
-      AvailabilityZone: eu-central-1a
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: eu-central-1b
+
 
   # Private Subnet 2
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref AsgVPC
-      CidrBlock: !Ref PrivateSubnet2Cidr
+      CidrBlock: 10.0.4.0/24
       AvailabilityZone: eu-central-1b
+
 
   # Public Route Table
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref AsgVPC
+
 
   # Private Route Table
   PrivateRouteTable:
@@ -97,53 +88,66 @@ Resources:
   # Public Route
   PublicRoute:
     Type: AWS::EC2::Route
-    DependsOn: VPCGatewayAttachment
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
   # Associate Public Subnet 1 with Public Route Table
-  AssociatePublicSubnet1:
+  PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnet1
       RouteTableId: !Ref PublicRouteTable
 
   # Associate Public Subnet 2 with Public Route Table
-  AssociatePublicSubnet2:
+  PublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
   # Associate Private Subnet 1 with Private Route Table
-  AssociatePrivateSubnet1:
+  PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet1
       RouteTableId: !Ref PrivateRouteTable
 
   # Associate Private Subnet 2 with Private Route Table
-  AssociatePrivateSubnet2:
+  PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet2
       RouteTableId: !Ref PrivateRouteTable
 
   # NAT Gateway EIP
-  NatEIP:
+  NATEip1:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
     DependsOn: VPCGatewayAttachment
 
-  # NAT Gateway
-  NatGateway:
+  NATEip2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+    DependsOn: VPCGatewayAttachment
+
+  # NAT Gateway 1
+  NatGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NatEIP.AllocationId
+      AllocationId: !GetAtt NATEip1.AllocationId
       SubnetId: !Ref PublicSubnet1
+
+
+  # NAT Gateway 2
+  NATGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATEip2.AllocationId
+      SubnetId: !Ref PublicSubnet2
 
   # Private Route
   PrivateRoute:
@@ -151,22 +155,18 @@ Resources:
     Properties:
       RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
+      NatGatewayId: !Ref NatGateway1
 
   # Security Group for ALB
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ALB SG (Http Traffic from internet)
+      GroupDescription: Allow HTTP access to ALB
       VpcId: !Ref AsgVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
           CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: -1
@@ -176,7 +176,7 @@ Resources:
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow HTTP & SSM access
+      GroupDescription: Allow HTTP access from ALB and SSH from specific IP
       VpcId: !Ref AsgVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -184,18 +184,18 @@ Resources:
           ToPort: 80
           SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
         - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
-  # Load Balancer
+  # Application Load Balancer
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: !Sub alb-${AWS::StackName}
+      Name: alb-AutoScalingLab
       Scheme: internet-facing
       Subnets:
         - !Ref PublicSubnet1
@@ -203,11 +203,11 @@ Resources:
       SecurityGroups:
         - !Ref LoadBalancerSecurityGroup
 
-  # Target Group
+  # ALB Target Group
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub tg-${AWS::StackName}
+      Name: tg-AutoScalingLab
       VpcId: !Ref AsgVPC
       Port: 80
       Protocol: HTTP
@@ -233,10 +233,10 @@ Resources:
   LaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
-      LaunchTemplateName: !Sub launch-template-${AWS::StackName}
+      LaunchTemplateName: lt-AutoScalingLab
       LaunchTemplateData:
-        ImageId: !Ref AmiImage
-        InstanceType: !Ref InstanceType
+        ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2}}'
+        InstanceType: t3.micro
         SecurityGroupIds:
           - !Ref InstanceSecurityGroup
         UserData:
@@ -244,18 +244,18 @@ Resources:
             #!/bin/bash
             # Update the system
             yum update -y
-
+            
             # Install Apache and stress
             yum install -y httpd stress
-
+            
             # Start and enable Apache
             systemctl start httpd
             systemctl enable httpd
-
+            
             # Create a simple web page with instance info and stress test button
             INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
             PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-
+            
             cat > /var/www/html/index.html << EOF
             <!DOCTYPE html>
             <html>
@@ -289,11 +289,11 @@ Resources:
                     <button class="stress-btn" onclick="startStressTest()">Stress Test CPU</button>
                     <p id="status"></p>
                 </div>
-
+            
                 <script>
                     function startStressTest() {
                         document.getElementById('status').innerText = 'Starting CPU stress test for 60 seconds...';
-
+            
                         // Use fetch API to trigger stress test
                         fetch('/stress', { method: 'POST' })
                             .then(response => response.text())
@@ -308,14 +308,14 @@ Resources:
             </body>
             </html>
             EOF
-
+            
             # Create a simple stress test script that definitely works
             cat > /var/www/html/stress.php << 'EOF'
             <?php
             header('Content-Type: text/plain');
             echo "Starting CPU stress test...\n";
             flush();
-
+            
             // Fork a background process to do CPU intensive work
             $pid = pcntl_fork();
             if ($pid == 0) {
@@ -332,10 +332,10 @@ Resources:
             echo "CPU stress test started (PID: $pid)\n";
             ?>
             EOF
-
+            
             # Install PHP
             yum install -y php
-
+            
             # Create a CGI script to handle stress test
             mkdir -p /var/www/cgi-bin
             cat > /var/www/cgi-bin/stress.sh << 'EOF'
@@ -343,7 +343,7 @@ Resources:
             echo "Content-type: text/plain"
             echo ""
             echo "Starting CPU stress test for 60 seconds..."
-
+            
             # Create CPU load using dd and /dev/zero
             timeout 60 bash -c '
                 for i in {1..4}; do
@@ -351,12 +351,12 @@ Resources:
                 done
                 wait
             ' &
-
+            
             echo "CPU stress test initiated"
             EOF
-
+            
             chmod +x /var/www/cgi-bin/stress.sh
-
+            
             # Configure Apache to handle the stress test endpoint
             cat > /etc/httpd/conf.d/stress.conf << EOF
             ScriptAlias /stress /var/www/cgi-bin/stress.sh
@@ -366,7 +366,7 @@ Resources:
                 Require all granted
             </Directory>
             EOF
-
+            
             # Restart Apache to apply changes
             systemctl restart httpd
 
@@ -374,7 +374,7 @@ Resources:
   AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
-      AutoScalingGroupName: AutoScalingLabASG
+      AutoScalingGroupName: asg-AutoScalingLab
       LaunchTemplate:
         LaunchTemplateId: !Ref LaunchTemplate
         Version: !GetAtt LaunchTemplate.LatestVersionNumber
@@ -410,11 +410,11 @@ Resources:
       Cooldown: 300
       ScalingAdjustment: -1
 
-  # CPU Alarm
-  CPUAlarmHigh:
+  # CPU High Alarm (Scale Out) - LOWERED THRESHOLD FOR TESTING
+  CpuAlarmHigh:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: Scale up if CPU > 20% for 1 minutes
+      AlarmDescription: Scale-up if CPU > 50% for 1 minutes (lowered for testing)
       Metrics:
         - Id: m1
           MetricStat:
@@ -428,17 +428,17 @@ Resources:
             Stat: Average
           ReturnData: true
       ComparisonOperator: GreaterThanThreshold
-      Threshold: 20
+      Threshold: 50
       EvaluationPeriods: 1
       DatapointsToAlarm: 1
       AlarmActions:
         - !Ref ScaleUpPolicy
 
-  # CPU Low Alarm
-  CPUAlarmLow:
+  # CPU Low Alarm (Scale In)
+  CpuAlarmLow:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: Scale down if CPU < 5% for 5 minutes
+      AlarmDescription: Scale-down if CPU < 20% for 5 minutes
       Metrics:
         - Id: m1
           MetricStat:
@@ -452,16 +452,17 @@ Resources:
             Stat: Average
           ReturnData: true
       ComparisonOperator: LessThanThreshold
-      Threshold: 5
+      Threshold: 20
       EvaluationPeriods: 5
       DatapointsToAlarm: 5
       AlarmActions:
         - !Ref ScaleDownPolicy
 
 Outputs:
-  ALBEndpoint:
-    Description: Public URL for the Application Load Balancer
-    Value: !Sub "http://${LoadBalancer.DNSName}"
   LoadBalancerDNS:
     Description: Load Balancer DNS Name
     Value: !GetAtt LoadBalancer.DNSName
+
+  AlbEndpoint:
+    Description: URL for the Load Balancer
+    Value: !Sub http://${LoadBalancer.DNSName}
