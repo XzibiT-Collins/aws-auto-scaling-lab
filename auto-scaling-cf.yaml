@@ -244,78 +244,404 @@ Resources:
             #!/bin/bash
             # Update the system
             yum update -y
-            
-            # Install Apache and stress
-            yum install -y httpd stress
-            
+
+            # Install Apache, stress, and PHP
+            yum install -y httpd stress php
+
             # Start and enable Apache
             systemctl start httpd
             systemctl enable httpd
-            
-            # Create a simple web page with instance info and stress test button
+
+            # Get instance metadata
             INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
             PRIVATE_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-            
+            AVAILABILITY_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+            INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+
+            # Create the enhanced web page
             cat > /var/www/html/index.html << EOF
             <!DOCTYPE html>
-            <html>
+            <html lang="en">
             <head>
-                <title>Auto Scaling Lab</title>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>AWS Auto Scaling Lab</title>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
                 <style>
-                    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-                    h1 { color: #333; }
-                    .info { background-color: #f5f5f5; padding: 20px; border-radius: 5px; display: inline-block; }
-                    .stress-btn { 
-                        background-color: #ff4757; 
-                        color: white; 
-                        border: none; 
-                        padding: 15px 32px; 
-                        text-align: center; 
-                        text-decoration: none; 
-                        display: inline-block; 
-                        font-size: 16px; 
-                        margin: 20px 2px; 
-                        cursor: pointer; 
-                        border-radius: 5px;
+                    :root {
+                        --primary: #232f3e;
+                        --secondary: #ff9900;
+                        --accent: #00a1c9;
+                        --light: #f2f3f8;
+                        --dark: #161e2d;
+                        --success: #1d8102;
+                        --danger: #d13212;
+                        --warning: #ffc107;
+                        --info: #17a2b8;
                     }
-                    .stress-btn:hover { background-color: #ff6b81; }
+
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+
+                    body {
+                        font-family: 'Inter', sans-serif;
+                        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                        color: var(--dark);
+                        line-height: 1.6;
+                        min-height: 100vh;
+                        padding: 20px;
+                    }
+
+                    .container {
+                        max-width: 1200px;
+                        margin: 0 auto;
+                    }
+
+                    header {
+                        text-align: center;
+                        margin-bottom: 30px;
+                        padding: 20px;
+                        background: white;
+                        border-radius: 12px;
+                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+                    }
+
+                    h1 {
+                        color: var(--primary);
+                        font-size: 2.5rem;
+                        margin-bottom: 10px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 15px;
+                    }
+
+                    .subtitle {
+                        color: #666;
+                        font-size: 1.1rem;
+                        font-weight: 400;
+                    }
+
+                    .dashboard {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 25px;
+                        margin-bottom: 30px;
+                    }
+
+                    @media (max-width: 768px) {
+                        .dashboard {
+                            grid-template-columns: 1fr;
+                        }
+                    }
+
+                    .card {
+                        background: white;
+                        border-radius: 12px;
+                        padding: 25px;
+                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+                        transition: transform 0.3s ease, box-shadow 0.3s ease;
+                    }
+
+                    .card:hover {
+                        transform: translateY(-5px);
+                        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
+                    }
+
+                    .card-header {
+                        display: flex;
+                        align-items: center;
+                        margin-bottom: 20px;
+                        padding-bottom: 15px;
+                        border-bottom: 1px solid #eee;
+                    }
+
+                    .card-title {
+                        font-size: 1.4rem;
+                        color: var(--primary);
+                        margin-left: 12px;
+                    }
+
+                    .card-icon {
+                        background: var(--primary);
+                        color: white;
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 10px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 18px;
+                    }
+
+                    .info-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 15px;
+                    }
+
+                    .info-item {
+                        margin-bottom: 15px;
+                    }
+
+                    .info-label {
+                        font-size: 0.85rem;
+                        color: #666;
+                        margin-bottom: 5px;
+                        display: flex;
+                        align-items: center;
+                        gap: 5px;
+                    }
+
+                    .info-value {
+                        font-size: 1.1rem;
+                        font-weight: 600;
+                        color: var(--primary);
+                        word-break: break-all;
+                    }
+
+                    .ip-address {
+                        background: var(--light);
+                        padding: 8px 12px;
+                        border-radius: 6px;
+                        font-family: monospace;
+                    }
+
+                    .actions {
+                        text-align: center;
+                    }
+
+                    .btn {
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        padding: 14px 28px;
+                        font-size: 1rem;
+                        font-weight: 600;
+                        border: none;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        margin: 10px;
+                    }
+
+                    .btn-primary {
+                        background: var(--secondary);
+                        color: white;
+                    }
+
+                    .btn-primary:hover {
+                        background: #e88a00;
+                        transform: translateY(-2px);
+                    }
+
+                    .btn-danger {
+                        background: var(--danger);
+                        color: white;
+                    }
+
+                    .btn-danger:hover {
+                        background: #b52a10;
+                        transform: translateY(-2px);
+                    }
+
+                    .status {
+                        margin-top: 20px;
+                        padding: 15px;
+                        border-radius: 8px;
+                        text-align: center;
+                        font-weight: 500;
+                    }
+
+                    .status-loading {
+                        background: #e8f4f8;
+                        color: var(--info);
+                        border-left: 4px solid var(--info);
+                    }
+
+                    .status-success {
+                        background: #e8f6ef;
+                        color: var(--success);
+                        border-left: 4px solid var(--success);
+                    }
+
+                    .status-error {
+                        background: #fdecea;
+                        color: var(--danger);
+                        border-left: 4px solid var(--danger);
+                    }
+
+                    .footer {
+                        text-align: center;
+                        margin-top: 40px;
+                        padding: 20px;
+                        color: #666;
+                        font-size: 0.9rem;
+                    }
+
+                    .badge {
+                        display: inline-block;
+                        padding: 4px 10px;
+                        border-radius: 20px;
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        margin-left: 8px;
+                    }
+
+                    .badge-success {
+                        background: #e8f6ef;
+                        color: var(--success);
+                    }
+
+                    .badge-info {
+                        background: #e8f4f8;
+                        color: var(--info);
+                    }
+
+                    .refresh-hint {
+                        margin-top: 15px;
+                        font-size: 0.9rem;
+                        color: #666;
+                        text-align: center;
+                    }
+
+                    .pulse {
+                        animation: pulse 2s infinite;
+                    }
+
+                    @keyframes pulse {
+                        0% { transform: scale(1); }
+                        50% { transform: scale(1.05); }
+                        100% { transform: scale(1); }
+                    }
                 </style>
             </head>
             <body>
-                <h1>Auto Scaling Lab</h1>
-                <div class="info">
-                    <h2>Hello from $PRIVATE_IP / $INSTANCE_ID</h2>
-                    <p>This instance is part of an Auto Scaling Group</p>
-                    <button class="stress-btn" onclick="startStressTest()">Stress Test CPU</button>
-                    <p id="status"></p>
+                <div class="container">
+                    <header>
+                        <h1><i class="fas fa-cloud-upload-alt"></i> AWS Auto Scaling Lab</h1>
+                        <p class="subtitle">Monitor and test your auto-scaling group performance</p>
+                    </header>
+
+                    <div class="dashboard">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-icon">
+                                    <i class="fas fa-server"></i>
+                                </div>
+                                <h2 class="card-title">Instance Details</h2>
+                            </div>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <div class="info-label">
+                                        <i class="fas fa-fingerprint"></i> Instance ID
+                                    </div>
+                                    <div class="info-value">$$INSTANCE_ID</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">
+                                        <i class="fas fa-network-wired"></i> Private IP
+                                    </div>
+                                    <div class="info-value ip-address">$$PRIVATE_IP</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">
+                                        <i class="fas fa-globe-americas"></i> Availability Zone
+                                    </div>
+                                    <div class="info-value">$$AVAILABILITY_ZONE</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">
+                                        <i class="fas fa-tachometer-alt"></i> Instance Type
+                                    </div>
+                                    <div class="info-value">$$INSTANCE_TYPE</div>
+                                </div>
+                            </div>
+                            <div class="refresh-hint">
+                                <i class="fas fa-sync-alt"></i> Refresh the page to see if you're served by a different instance
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="card-icon" style="background: var(--danger);">
+                                    <i class="fas fa-bolt"></i>
+                                </div>
+                                <h2 class="card-title">Performance Testing</h2>
+                            </div>
+                            <p>Simulate CPU load to test auto-scaling policies and load balancing.</p>
+                            <div class="actions">
+                                <button class="btn btn-danger pulse" onclick="startStressTest()">
+                                    <i class="fas fa-bolt"></i> Start Stress Test
+                                </button>
+                            </div>
+                            <div id="status" class="status"></div>
+                            <div class="info-item" style="margin-top: 20px;">
+                                <div class="info-label">
+                                    <i class="fas fa-info-circle"></i> Test Information
+                                </div>
+                                <div class="info-value">
+                                    The test will generate CPU load for 60 seconds
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="footer">
+                        <p>AWS Auto Scaling Lab Demonstration <span class="badge badge-info">v2.0</span></p>
+                        <p>Refresh page to verify load balancing across instances</p>
+                    </div>
                 </div>
-            
+
                 <script>
                     function startStressTest() {
-                        document.getElementById('status').innerText = 'Starting CPU stress test for 60 seconds...';
-            
+                        const statusEl = document.getElementById('status');
+                        statusEl.className = 'status status-loading';
+                        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting CPU stress test for 60 seconds...';
+
                         // Use fetch API to trigger stress test
                         fetch('/stress', { method: 'POST' })
                             .then(response => response.text())
                             .then(data => {
-                                document.getElementById('status').innerText = 'Stress test completed!';
+                                statusEl.className = 'status status-success';
+                                statusEl.innerHTML = '<i class="fas fa-check-circle"></i> Stress test completed successfully!';
                             })
                             .catch(error => {
-                                document.getElementById('status').innerText = 'Error starting stress test: ' + error;
+                                statusEl.className = 'status status-error';
+                                statusEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Error starting stress test: ' + error;
                             });
                     }
+
+                    // Add subtle animation to cards on page load
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const cards = document.querySelectorAll('.card');
+                        cards.forEach((card, index) => {
+                            card.style.opacity = '0';
+                            card.style.transform = 'translateY(20px)';
+                            setTimeout(() => {
+                                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                                card.style.opacity = '1';
+                                card.style.transform = 'translateY(0)';
+                            }, 100 * index);
+                        });
+                    });
                 </script>
             </body>
             </html>
             EOF
-            
+
             # Create a simple stress test script that definitely works
-            cat > /var/www/html/stress.php << 'EOF'
+            cat > /var/www/html/stress.php << EOF
             <?php
             header('Content-Type: text/plain');
             echo "Starting CPU stress test...\n";
             flush();
-            
+
             // Fork a background process to do CPU intensive work
             $pid = pcntl_fork();
             if ($pid == 0) {
@@ -332,18 +658,15 @@ Resources:
             echo "CPU stress test started (PID: $pid)\n";
             ?>
             EOF
-            
-            # Install PHP
-            yum install -y php
-            
+
             # Create a CGI script to handle stress test
             mkdir -p /var/www/cgi-bin
-            cat > /var/www/cgi-bin/stress.sh << 'EOF'
+            cat > /var/www/cgi-bin/stress.sh << EOF
             #!/bin/bash
             echo "Content-type: text/plain"
             echo ""
             echo "Starting CPU stress test for 60 seconds..."
-            
+
             # Create CPU load using dd and /dev/zero
             timeout 60 bash -c '
                 for i in {1..4}; do
@@ -351,12 +674,12 @@ Resources:
                 done
                 wait
             ' &
-            
+
             echo "CPU stress test initiated"
             EOF
-            
+
             chmod +x /var/www/cgi-bin/stress.sh
-            
+
             # Configure Apache to handle the stress test endpoint
             cat > /etc/httpd/conf.d/stress.conf << EOF
             ScriptAlias /stress /var/www/cgi-bin/stress.sh
@@ -366,7 +689,7 @@ Resources:
                 Require all granted
             </Directory>
             EOF
-            
+
             # Restart Apache to apply changes
             systemctl restart httpd
 
